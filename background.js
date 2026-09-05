@@ -1,0 +1,130 @@
+// background.js - 持久化方案 v2
+//
+// 规则（用户最新要求）：
+// - 持久化：max_seq + note_<N> → chrome.storage.local
+// - 浏览器关闭后再开 Chrome：之前未关闭的编辑标签页要保留（由 Chrome 自带 session restore）
+// - 编号永远递增（max_seq + 1），关掉的编号不回收
+// - 接受 session restore 时的"一闪"（不再做防闪烁）
+// - chrome.storage.session 不再使用
+//
+// seq 注入策略（4 重保险）：
+//   1) chrome.tabs.onUpdated —— tab URL 变化到 newtab.html 时检查并注入 ?seq=
+//   2) chrome.tabs.onActivated —— tab 激活时再检查一次
+//   3) chrome.runtime.onStartup —— 启动时遍历所有 newtab tabs 兜底注入
+//   4) chrome.runtime.onMessage getMySeq —— newtab.js 主动询问兜底
+//
+// 重要：tab 注入的 URL 会保留到下次 session restore；session restore 后
+// tabs 的 URL 仍然是 chrome-extension://.../newtab.html?seq=N，newtab.js
+// 直接从 URL 拿 seq，无须再注入。
+
+// 本次浏览器运行期间的 tabId → seq 映射
+const tabSeqMap = new Map();
+
+// 串行化链：保证 max_seq 的 read-modify-write 原子性
+let allocateChain = Promise.resolve();
+
+// === 分配下一个 seq（max_seq + 1），写回 storage.local ===
+async function getNextSeq() {
+  const result = allocateChain.then(async () => {
+    const r = await chrome.storage.local.get(['max_seq']);
+    let m = typeof r.max_seq === 'number' ? r.max_seq : 0;
+    m += 1;
+    await chrome.storage.local.set({ max_seq: m });
+    return m;
+  });
+  allocateChain = result.catch(() => {});
+  return result;
+}
+
+// === 给指定 tab 注入 seq 参数（URL 改写） ===
+async function injectSeq(tabId, currentUrl) {
+  try {
+    const seq = await getNextSeq();
+    const newUrl = currentUrl.split('?')[0] + '?seq=' + seq;
+    await chrome.tabs.update(tabId, { url: newUrl });
+    tabSeqMap.set(tabId, seq);
+  } catch (e) {
+    // tab 可能已不存在（被用户主动 × 关掉），静默失败
+  }
+}
+
+// === 检查一个 tab 是否需要注入 seq；需要就注入 ===
+async function tryInjectSeq(tabId) {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    const newtabUrl = chrome.runtime.getURL('newtab.html');
+    if (!tab.url || !tab.url.startsWith(newtabUrl)) return;
+    if (tab.url.includes('?seq=')) return;
+    if (tabSeqMap.has(tabId)) return;  // 本次 session 内已注入过
+    await injectSeq(tabId, tab.url);
+  } catch (e) {}
+}
+
+// === 监听 tab URL 变化 ===
+// 主注入点：tab 加载 newtab.html（无论新建还是恢复）一定触发
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  try {
+    if (!changeInfo.url) return;
+    const newtabUrl = chrome.runtime.getURL('newtab.html');
+    if (!changeInfo.url.startsWith(newtabUrl)) return;
+    if (changeInfo.url.includes('?seq=')) return;
+
+    await injectSeq(tabId, changeInfo.url);
+  } catch (e) {}
+});
+
+// === 兜底：tab 激活时再检查一次 ===
+chrome.tabs.onActivated.addListener((activeInfo) => {
+  tryInjectSeq(activeInfo.tabId);
+});
+
+// === 兜底：浏览器冷启动时遍历所有 newtab tabs 注入 ===
+chrome.runtime.onStartup.addListener(async () => {
+  try {
+    const newtabUrl = chrome.runtime.getURL('newtab.html');
+    const tabs = await chrome.tabs.query({ url: newtabUrl + '*' });
+    for (const t of tabs) {
+      // 用 tryInjectSeq 让每个 tab 的注入独立成功/失败，不互相阻塞
+      tryInjectSeq(t.id);
+    }
+  } catch (e) {}
+});
+
+// === tab 关闭：× 关闭清 note；关浏览器保留所有 ===
+chrome.tabs.onRemoved.addListener((tabId, removeInfo) => {
+  const seq = tabSeqMap.get(tabId);
+  if (seq == null) return;
+
+  // 主动 × 关闭（isWindowClosing=false）：清 note_<seq>
+  // 浏览器/窗口关闭（isWindowClosing=true）：保留，让 session restore 恢复
+  if (!removeInfo.isWindowClosing) {
+    chrome.storage.local.remove('note_' + seq).catch(() => {});
+  }
+  tabSeqMap.delete(tabId);
+});
+
+// === newtab.js 询问 "我是谁"（URL 没 seq 时的最终兜底） ===
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  const tabId = sender.tab && sender.tab.id;
+  if (!tabId) return false;
+
+  if (msg.type === 'getMySeq') {
+    // 先看 memory map
+    const known = tabSeqMap.get(tabId);
+    if (known) {
+      sendResponse({ seq: known });
+      return true;
+    }
+    // 没记录 → 分配一个新的
+    (async () => {
+      try {
+        const seq = await getNextSeq();
+        tabSeqMap.set(tabId, seq);
+        sendResponse({ seq });
+      } catch (e) {
+        sendResponse({ seq: null });
+      }
+    })();
+    return true;
+  }
+});
