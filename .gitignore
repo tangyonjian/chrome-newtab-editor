@@ -1,0 +1,15 @@
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Python（generate-icons.py 的运行环境）
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Windows
+Thumbs.db

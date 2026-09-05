@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="JX9jz3NRv3UY0Y9EmHHnin">
+<head data-page-node-id="3jhbsoBZUE6FTAp7iA0d9a">
+<meta charset="UTF-8" data-page-node-id="Zan8FsSbma7pvp0hgDnzY8">
+<title>新标签页 · 编辑器</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { height:100%; }
+  body {
+    font-family:-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+    background:#fafafa; color:#1f2937; display:flex; flex-direction:column;
+  }
+  .bar {
+    display:flex; align-items:center; justify-content:space-between;
+    padding:10px 16px; border-bottom:1px solid #e5e7eb; background:#fff;
+  }
+  .bar .title { font-size:14px; font-weight:600; }
+  .bar .meta { font-size:12px; color:#6b7280; display:flex; gap:16px; align-items:center; }
+  .bar button {
+    font-size:12px; padding:5px 12px; border:1px solid #d1d5db;
+    background:#fff; border-radius:6px; cursor:pointer; color:#1f2937;
+  }
+  .bar button:hover { background:#f3f4f6; }
+  textarea {
+    flex:1; width:100%; border:none; outline:none; resize:none;
+    padding:20px; font-size:15px; line-height:1.7;
+    font-family:"SF Mono",Consolas,"Courier New",monospace;
+    background:transparent; color:#1f2937;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background:#1e1e1e; color:#e5e5e5; }
+    .bar { background:#2a2a2a; border-bottom-color:#3a3a3a; }
+    .bar .meta { color:#9ca3af; }
+    .bar button { background:#2a2a2a; border-color:#4b5563; color:#e5e5e5; }
+    .bar button:hover { background:#3a3a3a; }
+    textarea { color:#e5e5e5; }
+  }
+</style>
+</head>
+<body data-page-node-id="8yIZcR25npcj0p9Ahdmfzc">
+  <div class="bar" data-page-node-id="bA1E0zjVO5SaDeEGl25OZ4">
+    <span class="title" id="title" data-page-node-id="dPI8WNJslrEefbdHLdxAuZ">txt</span>
+    <div class="meta" data-page-node-id="VEgreBKwMAxFDIWEqxbay1">
+      <span id="count" data-page-node-id="FfBtCaZa7MC9ZyHAIp8u5A">0 字</span>
+      <button id="export" data-page-node-id="69q9aqjgOLAIRf6OdzbLMQ">导出 .txt</button>
+    </div>
+  </div>
+  <textarea id="editor" placeholder="在这里输入内容，自动保存到本地……" spellcheck="false"></textarea>
+  <script src="newtab.js"></script>
+</body>
+</html>
